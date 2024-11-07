@@ -54,10 +54,41 @@ def checkWiFi_files():
     with open("/mnt/bigdata/01_projects/2024_trusco/expt_data/20241003/wifi/all.pkl","wb") as f:
         pickle.dump(allpd,f)
 
+
+# bibs -> id 対応を行ったデータから pickle　を作成
+def checkBLE_files():
+    worker_dirs = glob("/mnt/bigdata/01_projects/2024_trusco/expt_data/20241003/ble/*")
+    allpd = pd.DataFrame(columns=["id","time","mac","rssi"])
+    for worker in worker_dirs:
+        files = glob(worker + "/*.csv")
+        subject_id = int(os.path.basename(worker))
+        print("Subj:",subject_id,"->", subject2id(subject_id), )
+        dfo = pd.DataFrame(columns=["time","mac","rssi"])
+        for file in files:
+            print(file)
+            df = pd.read_csv(file, names=["time","mac","rssi"])
+            dfo = pd.concat([dfo,df])
+        print(len(dfo))
+        dfo['id']=subject2id(subject_id)
+        print(dfo)
+        allpd = pd.concat([allpd,dfo])
+    
+    print(len(allpd))
+    with open("/mnt/bigdata/01_projects/2024_trusco/expt_data/20241003/ble/all.pkl","wb") as f:
+        pickle.dump(allpd,f)
+    return allpd
+
+
 def read_wifi_data():
     with open("/mnt/bigdata/01_projects/2024_trusco/expt_data/20241003/wifi/all.pkl","rb") as f:
         alldp = pickle.load(f)
     return alldp
+
+def read_BLE_data():
+    with open("/mnt/bigdata/01_projects/2024_trusco/expt_data/20241003/ble/all.pkl","rb") as f:
+        alldp = pickle.load(f)
+    return alldp
+    
     
     # check unique MACs
 #    macs =alldp[alldp["rssi"]>=-45]["mac"].unique()
@@ -127,16 +158,20 @@ def draw_img_with(nimg, wg,sorted_mac):
         if abs(t-dt) < 2:
 #        print(t,dt)
             x,y = wg[wg_step]['pos']
-            heat = -(row.rssi+40)*20
+#            heat = -(row.rssi+40)*20
+#            heat = -(row.rssi+70)*20
+            heat = -(row.rssi+85)*20
             if heat> 255:
                 heat = 255
             if heat < 0:
                 heat = 0
             
             color = (heat, 0, 255 - heat)
-#            print(count, "diff:", int(t-dt),x,y, heat,color)
-            nimg = cv2.circle(nimg, (x, y), 18,color,-1)
-            nimg = cv2.putText(nimg,str(row.rssi), (x-20, y),  cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 3, cv2.LINE_AA)        
+            print(count, "diff:", int(t-dt),x,y, heat,color)
+#            nimg = cv2.circle(nimg, (x, y), 18,color,-1)
+#            nimg = cv2.putText(nimg,str(row.rssi), (x-20, y),  cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 3, cv2.LINE_AA)        
+            nimg = cv2.circle(nimg, (x, y), 32,color,-1)
+            nimg = cv2.putText(nimg,str(row.rssi), (x-20, y),  cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3, cv2.LINE_AA)        
             draw_count+=1
         count += 1
         wg_step+= 1
@@ -208,7 +243,7 @@ def doit_map():
         for id in range(1,38):
             macs =  only_mac[only_mac['id']==id].sort_values(['time'])
             if len(macs) > 0:
-#                print("Working for ID",ct-100,id, len(macs), mac_count[ct-101])            
+                print("Working for ID",ct-100,id, len(macs), mac_count[ct-101])            
                 newimg,draw_plus = draw_img_with(floor_img,  get_worker(workers,id),macs)
                 draw_sum += draw_plus
         print("MAC:",ct, target_mac, draw_sum) 
@@ -216,6 +251,53 @@ def doit_map():
         ct += 1
 
 
-if __name__ == "__main__":
-    print(non_1f_macs)    
 
+
+
+def doit_map_ble():
+    bibs_files()
+    ble_data = read_BLE_data()
+    workers = read_worker_tracks()
+
+    # 特定の基地局についてMapを作ってみたい。
+    floor_img = read_empty_floor_image()
+
+    gmac = ble_data[(ble_data['rssi']> -80)].groupby(['mac']).size()
+    df = gmac.sort_values(ascending=False)[:50]
+
+    mac_list = []
+    mac_count = []
+    for row in df.items():
+        mac_list.append(row[0])
+        mac_count.append(row[1])
+    
+    ct = 101
+
+    for target_mac in mac_list:
+#        print("MAC:",ct, target_mac)
+        floor_img = read_empty_floor_image()
+        draw_sum = 0
+        only_mac = ble_data[(ble_data['mac'] == target_mac) & ((ble_data['rssi']> -100))]
+
+        for id in range(1,38):
+            macs =  only_mac[only_mac['id']==id].sort_values(['time'])
+            if len(macs) > 0:
+#                print("Working for ID",ct-100,id, len(macs), mac_count[ct-101])            
+                newimg,draw_plus = draw_img_with(floor_img,  get_worker(workers,id),macs)
+                draw_sum += draw_plus
+        print("MAC:",ct, target_mac, draw_sum) 
+        if draw_sum > 0:
+            cv2.imwrite( f"BLE:{ct}_{mac_count[ct-101]+10000}_{target_mac}_map.jpg", newimg)
+        ct += 1
+
+
+def do_ble_pickle():
+    bibs_files()
+    ble = checkBLE_files()
+    print(ble)
+
+
+if __name__ == "__main__":
+    #print(non_1f_macs)
+    #これらの mac が -50db以上であったら、別フロアで作業と認定すべし！
+    doit_map_ble()
