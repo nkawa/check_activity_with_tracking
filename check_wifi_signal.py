@@ -279,7 +279,7 @@ def doit_map_ble():
         draw_sum = 0
         only_mac = ble_data[(ble_data['mac'] == target_mac) & ((ble_data['rssi']> -100))]
 
-        for id in range(1,38):
+        for id in range(0,39):
             macs =  only_mac[only_mac['id']==id].sort_values(['time'])
             if len(macs) > 0:
 #                print("Working for ID",ct-100,id, len(macs), mac_count[ct-101])            
